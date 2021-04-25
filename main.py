@@ -1,8 +1,7 @@
-import btle
+from bluepy import btle
 import time
 import math
 import matplotlib.pyplot as plt
-import seaborn as sns
 import pandas as pd
 import numpy as np
 
@@ -19,6 +18,8 @@ class Receiver:
     receivedTime = 0
     def __init__(self, uuid:str, rssi, time):
         self.uuid = uuid
+        self.rssi = rssi
+        self.time = time
     def getUuid(self):
         return self.uuid
     def setRssi(self, rssi:int):
@@ -59,12 +60,13 @@ def calcEuclideanDistance(pos1, pos2):
 
 def calcNormalDistribution(d:float, mean:float, deviation:float):
     return (1/math.sqrt(2*math.pi*deviation**2))*math.exp(-(d-mean)**2/(2*deviation**2))
-grid = [[0] * 320 for i in range(420)]
+#grid = [[0] * 150 for i in range(90)]
+grid = np.zeros((150, 90))
 users = dict()
 
 scanner = btle.Scanner(0)
 while True:
-    detectedDevices = scanner.scan(3.0)
+    detectedDevices = scanner.scan(6.0)
     for detectedDevice in detectedDevices:
         for (adTypeCode, description, valueText) in detectedDevice.getScanData():
             if adTypeCode == 254:
@@ -74,8 +76,18 @@ while True:
                 uuid = valueText[0:40]
                 rpid = valueText[40:46]
                 rssi = int(valueText[46:48],16)-256
+                print(uuid,rpid,rssi)
+                if not rpid in users.keys():
+                    users[rpid] = User()
                 users[rpid].receivedSignals[uuid] = Receiver(uuid, rssi, time.time())
-    for user in users:
+                print(users[rpid].receivedSignals[uuid])
+                print(users)
+    time.sleep(3)
+    for user in users.values():
+        for s in user.receivedSignals.values():
+            if time.time() - s.receivedTime() > 30:
+                print("deleted...")
+                del(s)
         if len(user.receivedSignals) < 3:
             # 測位するには受信機の数が少ない
             continue
@@ -83,21 +95,22 @@ while True:
             for re2 in user.receivedSignals.values():
                 if re1.getPos() == re2.getPos():
                     continue
-                for x in range(-800, 800, 5):
-                    for y in range(-600, 600, 5):
+                for x in range(-500, 1000, 10):
+                    for y in range(-300, 600, 10):
                         if [x,y] == re1.getPos() or [x,y] == re2.getPos():
                             print("continue")
                             continue
-                        grid[int(x/5)+160][int(y/5)+120] += calcNormalDistribution(calcEuclideanDistance([x,y],re2.getPos()),
+                        grid[int(x/10)+50][int(y/10)+30] += calcNormalDistribution(calcEuclideanDistance([x,y],re2.getPos()),
                                 calcDistance(re1.getRssi(), re2.getRssi(), calcEuclideanDistance(re1.getPos(),re2.getPos())),
                                 calcDistance(re1.getRssi(), re2.getRssi()-2, calcEuclideanDistance(re1.getPos(),re2.getPos()))-calcDistance(re1.getRssi(), re2.getRssi(), calcEuclideanDistance(re1.getPos(),re2.getPos())))
 
         maxPoint = MaxPosition([0,0],0)
-        for x in range(-800, 800, 5):
-            for y in range(-600, 600, 5):
-                if grid[int(x/5)+160][int(y/5)+120] > maxPoint.getMaxDat():
-                    maxPoint.setMax([x,y], grid[int(x/5)+160][int(y/5)+120])
-        arr = np.array(grid)
-        plt.imshow(arr)
+        for x in range(-500, 1000, 10):
+            for y in range(-300, 600, 10):
+                if grid[int(x/10)+50][int(y/10)+30] > maxPoint.getMaxDat():
+                    maxPoint.setMax([x,y], grid[int(x/10)+50][int(y/10)+30])
+        fig = plt.figure()
+        plt.imshow(grid)
         x,y = maxPoint.getMaxPos()
-        print((x/5)+160,(y/5)+120)
+        print((x/10)+50,(y/10)+30)
+        fig.savefig("img.png")
