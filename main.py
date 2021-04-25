@@ -1,4 +1,5 @@
 from bluepy import btle
+import threading
 import time
 import math
 import matplotlib.pyplot as plt
@@ -50,13 +51,10 @@ class User:
 # return distance from rssi1
 
 def calcDistance(rssi1:int, rssi2:int, distance:int):
-    return 1/(10**((-1/20)*(-rssi2-(-rssi1)))+1)*distance
+    return 1/(10**((-1/20)*(rssi2-(rssi1)))+1)*distance
 
-def calcDistances(rssi1:int, rssi2:int, distance:int):
-    return calcDistance(rssi1, rssi2, distance), calcDistance(rssi1, rssi2-2, distance)-calcDistance(rssi1, rssi2, distance)
-
-def calcEuclideanDistance(pos1, pos2):
-    return math.sqrt((pos1[0]-pos2[0])**2+(pos1[1]-pos2[1])**2)
+def calcEuclideanDistance(x1, y1, x2, y2):
+    return math.sqrt((x1-x2)**2+(y1-y2)**2)
 
 def calcNormalDistribution(d:float, mean:float, deviation:float):
     return (1/math.sqrt(2*math.pi*deviation**2))*math.exp(-(d-mean)**2/(2*deviation**2))
@@ -95,14 +93,23 @@ while True:
             for re2 in user.receivedSignals.values():
                 if re1.getPos() == re2.getPos():
                     continue
+                hi = 10**((-1/20)*(re2.getRssi()-(re1.getRssi())))
+                if  hi > 1:
+                    continue
                 for x in range(-500, 1000, 10):
                     for y in range(-300, 600, 10):
                         if [x,y] == re1.getPos() or [x,y] == re2.getPos():
                             print("continue")
                             continue
-                        grid[int(x/10)+50][int(y/10)+30] += calcNormalDistribution(calcEuclideanDistance([x,y],re2.getPos()),
-                                calcDistance(re1.getRssi(), re2.getRssi(), calcEuclideanDistance(re1.getPos(),re2.getPos())),
-                                calcDistance(re1.getRssi(), re2.getRssi()-2, calcEuclideanDistance(re1.getPos(),re2.getPos()))-calcDistance(re1.getRssi(), re2.getRssi(), calcEuclideanDistance(re1.getPos(),re2.getPos())))
+                        h = hi/(1-hi)
+                        i = hi/(1+hi)
+                        circlex = h*(re1.getPos()[0]-re2.getPos()[0])+re1.getPos()[0]
+                        circley = h*(re1.getPos()[1]-re2.getPos()[1])+re1.getPos()[1]
+                        gaisyux = i*(re2.getPos()[0]-re1.getPos()[0])+re1.getPos()[0]
+                        gaisyuy = i*(re2.getPos()[1]-re1.getPos()[1])+re1.getPos()[1]
+                        grid[int(x/10)+50][int(y/10)+30] += calcNormalDistribution(calcEuclideanDistance(x,y,circlex,circley),
+                                calcDistance(re1.getRssi(), re2.getRssi(), calcEuclideanDistance(gaisyux, gaisyuy, circlex, circley)),
+                                calcDistance(re1.getRssi(), re2.getRssi()-2, calcEuclideanDistance(gaisyux, gaisyuy, circlex, circley)) - calcDistance(re1.getRssi(), re2.getRssi(), calcEuclideanDistance(gaisyux, gaisyuy, circlex, circley)))
 
         maxPoint = MaxPosition([0,0],0)
         for x in range(-500, 1000, 10):
