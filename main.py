@@ -1,4 +1,5 @@
 from bluepy import btle
+import itertools
 import time
 import math
 import matplotlib.pyplot as plt
@@ -89,8 +90,8 @@ while True:
             users[uuid].receivedSignals.pop(p)
     for rpid, user in users.items():
         print("user",rpid)
-        y = np.arange(int(900/zoom)).reshape(1,int(900/zoom)).repeat(int(1500/zoom),axis=0)
         x = np.arange(int(1500/zoom)).reshape(int(1500/zoom),1).repeat(int(900/zoom),axis=1)
+        y = np.arange(int(900/zoom)).reshape(1,int(900/zoom)).repeat(int(1500/zoom),axis=0)
         grid = np.zeros((int(1500/zoom),int(900/zoom)))
         fig = plt.figure()
         for uuid, s in user.receivedSignals.items():
@@ -98,41 +99,34 @@ while True:
         if len(user.receivedSignals) < 3:
             # 測位するには受信機の数が少ない
             continue
-        for re1 in user.receivedSignals.values():
-            for re2 in user.receivedSignals.values():
-                if re1.uuid == re2.uuid:
-                    print("same receiver")
-                    continue
-                hi = 10**((-1/18)*(re1.getRssi()-(re2.getRssi())))
-                #print(hi)
-                if  hi >= 1:
-                    continue
-                h = hi/(1-hi)
-                i = hi/(1+hi)
-                gaishu1 = h*(re1.getPos() - re2.getPos())+re1.getPos()
-                gaishu2 = i*(re2.getPos() - re1.getPos())+re1.getPos()
-                circle = (gaishu1+gaishu2)/2
-                radius = calcEuclideanDistance((gaishu1-gaishu2)/2,np.array([0,0]))
-                #print(circle,radius)
-                plt.annotate('', xy=np.dot(gaishu1,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]), xytext=np.dot(gaishu2,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]),
-                        arrowprops=dict(shrink=0, width=1, headwidth=8, 
-                                        headlength=10, connectionstyle='arc3',
-                                        facecolor='gray', edgecolor='gray')
-                       )
-                #np.apply_along_axis(calc, 1, grid)
-                d = np.sqrt(((x*zoom-500)-circle[0])**2+((y*zoom-300)-circle[1])**2)
-                grid += norm.pdf(d,radius,50)
+        for re in itertools.combinations(user.receivedSignals.values()):
+            hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
+            #print(hi)
+            if  hi >= 1:
+                continue
+            h = hi/(1-hi)
+            i = hi/(1+hi)
+            enshu1 = h*(re[0].getPos() - re[1].getPos())+re[0].getPos()
+            enshu2 = i*(re[1].getPos() - re[0].getPos())+re[0].getPos()
+            circle = (enshu1+enshu2)/2
+            radius = calcEuclideanDistance((enshu1-enshu2)/2,np.array([0,0]))
+            #長さが円周である矢印を描画
+            plt.annotate('', xy=np.dot(enshu1,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]), xytext=np.dot(enshu2,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]),
+                    arrowprops=dict(shrink=0, width=1, headwidth=8, 
+                                    headlength=10, connectionstyle='arc3',
+                                    facecolor='gray', edgecolor='gray')
+                   )
+            d = np.sqrt(((x*zoom-500)-circle[0])**2+((y*zoom-300)-circle[1])**2)
+            grid += norm.pdf(d,radius,50)
         maxPoint = MaxPosition(np.array([0,0]),0)
         for x in range(-500, 1000, zoom):
             for y in range(-300, 600, zoom):
                 if grid[int(x/zoom+500/zoom)][int(y/zoom+300/zoom)] > maxPoint.getMaxDat():
                     maxPoint.setMax(np.array([x,y]), grid[int(x/zoom+500/zoom)][int(y/zoom+300/zoom)])
-
         plt.imshow(grid)
         x,y = maxPoint.getMaxPos()
         for i in receiversPositions.values():
             plt.plot(int(i[1]/zoom)+(300/zoom), int(i[0]/zoom)+(500/zoom), marker='P',markersize=7, color='w')
         plt.plot(int(y/zoom)+(300/zoom), int(x/zoom)+(500/zoom), marker='P',markersize=10, color='r')
-
         print(x,y)
         fig.savefig("img.png")
