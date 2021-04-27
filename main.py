@@ -74,7 +74,7 @@ while True:
                 users[rpid].receivedSignals[uuid] = Receiver(uuid, rssi, time.time())
                 print(users[rpid].receivedSignals[uuid])
                 print(users)
-    users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u.receivedSignals) != 0}
+    users = {k: {r: s for r, s in u.receivedSignals.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u.receivedSignals) != 0}
     for rpid, user in users.items():
         print("user",rpid)
         x = np.arange(int(1500/zoom)).reshape(int(1500/zoom),1).repeat(int(900/zoom),axis=1)
