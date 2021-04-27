@@ -50,15 +50,8 @@ class MaxPosition:
 class User:
     receivedSignals = dict()
 
-def calc(p):
-    p[2] += calcNormalDistribution(calcEuclideanDistance(p[0:2], circle), radius, 50)
-
 def calcEuclideanDistance(x,y):
     return math.sqrt((x[0]-y[0])**2+(x[1]-y[1])**2)
-
-def calcNormalDistribution(d:float, mean:float, deviation:float):
-    return (1/math.sqrt(2*math.pi*(deviation**2)))*math.exp(-(d-mean)**2/(2*(deviation**2)))
-
 #grid = [[0] * 320 for i in range(420)]
 
 users = dict()
@@ -81,13 +74,7 @@ while True:
                 users[rpid].receivedSignals[uuid] = Receiver(uuid, rssi, time.time())
                 print(users[rpid].receivedSignals[uuid])
                 print(users)
-    for uuid, user in users.items():
-        poplist = []
-        for rpid, s in user.receivedSignals.items():
-            if time.time() - s.receivedTime > 60:
-                poplist.append(rpid)
-        for p in poplist:
-            users[uuid].receivedSignals.pop(p)
+    users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u.receivedSignals) != 0}
     for rpid, user in users.items():
         print("user",rpid)
         x = np.arange(int(1500/zoom)).reshape(int(1500/zoom),1).repeat(int(900/zoom),axis=1)
@@ -99,7 +86,7 @@ while True:
         if len(user.receivedSignals) < 3:
             # 測位するには受信機の数が少ない
             continue
-        for re in itertools.combinations(user.receivedSignals.values()):
+        for re in itertools.permutations(user.receivedSignals.values(),2):
             hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
             #print(hi)
             if  hi >= 1:
@@ -130,3 +117,5 @@ while True:
         plt.plot(int(y/zoom)+(300/zoom), int(x/zoom)+(500/zoom), marker='P',markersize=10, color='r')
         print(x,y)
         fig.savefig("img.png")
+        plt.clf()
+        plt.close()
