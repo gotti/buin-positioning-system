@@ -14,6 +14,8 @@ receiversPositions = {
         "fffe02150472b7bbce08788deb455a74c25cccce": np.array([390,0])
         }
 zoom = 25
+xsize = int(1500/zoom)
+ysize = int(900/zoom)
 
 class Receiver:
     uuid:str = ""
@@ -32,32 +34,13 @@ class Receiver:
     def getPos(self):
         return receiversPositions[self.uuid]
 
-class MaxPosition:
-    maxPos = np.array([0,0])
-    maxDat = 0
-    def __init__(self, maxPos, maxDat):
-        self.maxPos = maxPos
-        self.maxDat = maxDat
-    def setMax(self, maxPos, maxDat):
-        self.maxPos = maxPos
-        self.maxDat = maxDat
-    def getMaxDat(self):
-        return self.maxDat
-    def getMaxPos(self):
-        return self.maxPos
-
-
-class User:
-    receivedSignals = dict()
-
 def calcEuclideanDistance(x,y):
     return math.sqrt((x[0]-y[0])**2+(x[1]-y[1])**2)
 #grid = [[0] * 320 for i in range(420)]
 
-users = dict()
 
 scanner = btle.Scanner(0)
-while True:
+def scan(users):
     detectedDevices = scanner.scan(3.0)
     for detectedDevice in detectedDevices:
         for (adTypeCode, description, valueText) in detectedDevice.getScanData():
@@ -70,52 +53,59 @@ while True:
                 rssi = int(valueText[46:48],16)-256
                 print(uuid,rpid,rssi)
                 if not rpid in users.keys():
-                    users[rpid] = User()
-                users[rpid].receivedSignals[uuid] = Receiver(uuid, rssi, time.time())
-                print(users[rpid].receivedSignals[uuid])
+                    users[rpid] = {uuid: Receiver(uuid, rssi, time.time())}
+                else:
+                    users[rpid][uuid] = Receiver(uuid, rssi, time.time())
+                print(users[rpid][uuid])
                 print(users)
-    users = {k: {r: s for r, s in u.receivedSignals.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u.receivedSignals) != 0}
-    for rpid, user in users.items():
-        print("user",rpid)
-        x = np.arange(int(1500/zoom)).reshape(int(1500/zoom),1).repeat(int(900/zoom),axis=1)
-        y = np.arange(int(900/zoom)).reshape(1,int(900/zoom)).repeat(int(1500/zoom),axis=0)
-        grid = np.zeros((int(1500/zoom),int(900/zoom)))
-        fig = plt.figure()
-        for uuid, s in user.receivedSignals.items():
-            print("-signal:",uuid[-6:])
-        if len(user.receivedSignals) < 3:
-            # 測位するには受信機の数が少ない
+            if adTypeCode == 3:
+                if valueText == "0000fd6f-0000-1000-8000-00805f9b34fb":
+                    print("found cocoa")
+    return users
+
+def positioning(rpid, user):
+    x = np.arange(xsize).reshape(xsize,1).repeat(ysize,axis=1)
+    y = np.arange(ysize).reshape(1,ysize).repeat(xsize,axis=0)
+    grid = np.zeros((xsize,ysize))
+    fig = plt.figure()
+    for uuid, s in user.items():
+        print("-signal:",uuid[-6:])
+    if len(user) < 3:
+        # 測位するには受信機の数が少ない
+        return None
+    for re in itertools.permutations(user.values(),2):
+        hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
+        #print(hi)
+        if  hi >= 1:
             continue
-        for re in itertools.permutations(user.receivedSignals.values(),2):
-            hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
-            #print(hi)
-            if  hi >= 1:
-                continue
-            h = hi/(1-hi)
-            i = hi/(1+hi)
-            enshu1 = h*(re[0].getPos() - re[1].getPos())+re[0].getPos()
-            enshu2 = i*(re[1].getPos() - re[0].getPos())+re[0].getPos()
-            circle = (enshu1+enshu2)/2
-            radius = calcEuclideanDistance((enshu1-enshu2)/2,np.array([0,0]))
-            #長さが円周である矢印を描画
-            plt.annotate('', xy=np.dot(enshu1,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]), xytext=np.dot(enshu2,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]),
-                    arrowprops=dict(shrink=0, width=1, headwidth=8, 
-                                    headlength=10, connectionstyle='arc3',
-                                    facecolor='gray', edgecolor='gray')
-                   )
-            d = np.sqrt(((x*zoom-500)-circle[0])**2+((y*zoom-300)-circle[1])**2)
-            grid += norm.pdf(d,radius,50)
-        maxPoint = MaxPosition(np.array([0,0]),0)
-        for x in range(-500, 1000, zoom):
-            for y in range(-300, 600, zoom):
-                if grid[int(x/zoom+500/zoom)][int(y/zoom+300/zoom)] > maxPoint.getMaxDat():
-                    maxPoint.setMax(np.array([x,y]), grid[int(x/zoom+500/zoom)][int(y/zoom+300/zoom)])
-        plt.imshow(grid)
-        x,y = maxPoint.getMaxPos()
-        for i in receiversPositions.values():
-            plt.plot(int(i[1]/zoom)+(300/zoom), int(i[0]/zoom)+(500/zoom), marker='P',markersize=7, color='w')
-        plt.plot(int(y/zoom)+(300/zoom), int(x/zoom)+(500/zoom), marker='P',markersize=10, color='r')
-        print(x,y)
-        fig.savefig("img.png")
-        plt.clf()
-        plt.close()
+        h = hi/(1-hi)
+        i = hi/(1+hi)
+        enshu1 = h*(re[0].getPos() - re[1].getPos())+re[0].getPos()
+        enshu2 = i*(re[1].getPos() - re[0].getPos())+re[0].getPos()
+        circle = (enshu1+enshu2)/2
+        radius = calcEuclideanDistance((enshu1-enshu2)/2,np.array([0,0]))
+        #長さが円周である矢印を描画
+        plt.annotate('', xy=np.dot(enshu1,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]), xytext=np.dot(enshu2,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]),
+                arrowprops=dict(shrink=0, width=1, headwidth=8, 
+                                headlength=10, connectionstyle='arc3',
+                                facecolor='gray', edgecolor='gray')
+               )
+        d = np.sqrt(((x*zoom-500)-circle[0])**2+((y*zoom-300)-circle[1])**2)
+        grid += norm.pdf(d,radius,50)
+    maxPos = np.unravel_index(np.argmax(grid), grid.shape)
+    plt.imshow(grid)
+    for i in receiversPositions.values():
+        plt.plot(int((i[1]+300)/zoom), int((i[0]+500)/zoom), marker='P',markersize=7, color='w')
+    plt.plot(maxPos[1], maxPos[0], marker='P',markersize=10, color='r')
+    print(maxPos)
+    fig.savefig("img.png")
+    plt.clf()
+    plt.close()
+
+users = dict()
+
+while True:
+    users = scan(users)
+    users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u) != 0}
+    for rpid, user in users.items():
+        positioning(rpid, user)
