@@ -42,58 +42,73 @@ class Receiver:
         return receiversPositions[self.uuid]
 
 
-def calcEuclideanDistance(x, y):
-    return math.sqrt((x[0]-y[0])**2+(x[1]-y[1])**2)
-    #grid = [[0] * 320 for i in range(420)]
+def calcEuclideanDistance(a, b):
+    return math.sqrt((a[0]-b[0])**2+(a[1]-b[1])**2)
 
 
 def calcRssi(d):
     return int(-60-20*math.log10(d))  # -60はそれっぽい値ならなんでも
 
 
-def mock_scan(users):
-    time.sleep(3)
-    rpid = 1
-    point = np.array([180, 190])
-    for uuid, r in receiversPositions.items():
-        if random.random() <= 0.5:
-            rssi = calcRssi(calcEuclideanDistance(point, r))
-            print(calcEuclideanDistance(point, r))
-            print(rssi)
-            if not rpid in users.keys():
-                users[rpid] = {uuid: Receiver(uuid, rssi, time.time())}
-            else:
-                users[rpid][uuid] = Receiver(uuid, rssi, time.time())
-    return users
 
 
-#scanner = btle.Scanner(0)
+class Scanner():
+    def __init__(self):
+        scanner = None
+        self.scan_func = self.scan_mock
 
+    def setScanner(self, btleid):
+        scanner = btle.Scanner(0)
+        self.scan_func = self.scan_btle
 
-def scan(users):
-    detectedDevices = scanner.scan(3.0)
-    for detectedDevice in detectedDevices:
-        for (adTypeCode, description, valueText) in detectedDevice.getScanData():
-            if adTypeCode == 254:#受信機
-                if valueText[0:8] != "fffe0215":
+    def scan(self, users):
+        return self.scan_func(users)
+    
+    def scan_btle(self, users):
+        detectedDevices = scanner.scan(3.0)
+        for detectedDevice in detectedDevices:
+            for (adTypeCode, description, valueText) in detectedDevice.getScanData():
+                if adTypeCode == 254 and valueText[0:8] == "fffe0215":
                     # if not a repeated advertisement
+                    uuid = valueText[0:40]#受信機id
+                    rpid = valueText[40:46]#ユーザーid
+                    rssi = int(valueText[46:48],16)-256#信号強度
+                    print(uuid,rpid,rssi)
+                    if not rpid in users.keys():
+                        #ユーザーidがusersに存在しない場合 追加する
+                        users[rpid] = {uuid: Receiver(uuid, rssi, time.time())}
+                    else:
+                        #ユーザーidがusersに存在する場合は users[ユーザーid]の中に受信機id追加
+                        users[rpid][uuid] = Receiver(uuid, rssi, time.time())
+                    print(users[rpid][uuid])
+                    print(users)
+                elif adTypeCode == 3:#ココア
+                    if valueText == "0000fd6f-0000-1000-8000-00805f9b34fb":
+                        print("found cocoa")
+        return users
+
+    def scan_mock(self, users):
+        print("mock")
+        time.sleep(3)
+        scanning_users = [
+            {"rpid": 1, "point": np.array([180, 190])},
+            {"rpid": 2, "point": np.array([100, 190])},
+            {"rpid": 3, "point": np.array([180, 100])},
+        ]
+        rpid = 1
+        point = np.array([180, 190])
+        for uuid, r in receiversPositions.items():
+            for scanning_user in scanning_users:
+                if random.random() <= 0.5:
                     continue
-                uuid = valueText[0:40]#受信機id
-                rpid = valueText[40:46]#ユーザーid
-                rssi = int(valueText[46:48],16)-256#信号強度
-                print(uuid,rpid,rssi)
-                if not rpid in users.keys():
-                    #ユーザーidがusersに存在しない場合 追加する
-                    users[rpid] = {uuid: Receiver(uuid, rssi, time.time())}
+                rssi = calcRssi(calcEuclideanDistance(scanning_user["point"], r))
+                print(calcEuclideanDistance(scanning_user["point"], r))
+                print(rssi)
+                if not scanning_user["rpid"] in users.keys():
+                    users[scanning_user["rpid"]] = {uuid: Receiver(uuid, rssi, time.time())}
                 else:
-                    #ユーザーidがusersに存在する場合は users[ユーザーid]の中に受信機id追加
-                    users[rpid][uuid] = Receiver(uuid, rssi, time.time())
-                print(users[rpid][uuid])
-                print(users)
-            if adTypeCode == 3:#ココア
-                if valueText == "0000fd6f-0000-1000-8000-00805f9b34fb":
-                    print("found cocoa")
-    return users
+                    users[scanning_user["rpid"]][uuid] = Receiver(uuid, rssi, time.time())
+        return users
 
 def positioning(rpid, receivers):
     x = np.arange(xsize).reshape(xsize,1).repeat(ysize,axis=1)
@@ -130,18 +145,19 @@ def positioning(rpid, receivers):
         plt.plot(int((i[1]+300)/zoom), int((i[0]+500)/zoom),
                  marker='P', markersize=7, color='w')
     plt.plot(maxPos[1], maxPos[0], marker='P', markersize=10, color='r')
-    print(maxPos)
     fig.savefig("img.png")
     plt.clf()
     plt.close()
+    maxPos = (maxPos[0] * zoom - 500, maxPos[1] * zoom - 300)
+    print("maxpos:", maxPos)
+    return maxPos
 
 
-users = dict()
-
+users = {}
+scanner = Scanner()
 while True:
     #受信機からのusers情報取得
-    #users = scan(users)
-    users = mock_scan(users)
+    users = scanner.scan(users)
     #60秒以上たったデータを削除
     users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u) != 0}
     for rpid, receivers in users.items():
