@@ -1,4 +1,4 @@
-from bluepy import btle
+#from bluepy import btle
 import itertools
 import time
 import math
@@ -20,8 +20,8 @@ ysize = int(900/zoom)
 
 
 class Receiver:
-    uuid: str = ""
-    rssi: int = 0
+    uuid:str = ""#受信機id
+    rssi:int = 0#信号強度
     receivedTime = 0
 
     def __init__(self, uuid: str, rssi, time):
@@ -48,7 +48,7 @@ def calcEuclideanDistance(x, y):
 
 
 def calcRssi(d):
-    return int(-60*-20*math.log10(d))  # -60はそれっぽい値ならなんでも
+    return int(-60-20*math.log10(d))  # -60はそれっぽい値ならなんでも
 
 
 def mock_scan(users):
@@ -67,44 +67,45 @@ def mock_scan(users):
     return users
 
 
-scanner = btle.Scanner(0)
+#scanner = btle.Scanner(0)
 
 
 def scan(users):
     detectedDevices = scanner.scan(3.0)
     for detectedDevice in detectedDevices:
         for (adTypeCode, description, valueText) in detectedDevice.getScanData():
-            if adTypeCode == 254:
+            if adTypeCode == 254:#受信機
                 if valueText[0:8] != "fffe0215":
                     # if not a repeated advertisement
                     continue
-                uuid = valueText[0:40]
-                rpid = valueText[40:46]
-                rssi = int(valueText[46:48], 16)-256
-                print(uuid, rpid, rssi)
+                uuid = valueText[0:40]#受信機id
+                rpid = valueText[40:46]#ユーザーid
+                rssi = int(valueText[46:48],16)-256#信号強度
+                print(uuid,rpid,rssi)
                 if not rpid in users.keys():
+                    #ユーザーidがusersに存在しない場合 追加する
                     users[rpid] = {uuid: Receiver(uuid, rssi, time.time())}
                 else:
+                    #ユーザーidがusersに存在する場合は users[ユーザーid]の中に受信機id追加
                     users[rpid][uuid] = Receiver(uuid, rssi, time.time())
                 print(users[rpid][uuid])
                 print(users)
-            if adTypeCode == 3:
+            if adTypeCode == 3:#ココア
                 if valueText == "0000fd6f-0000-1000-8000-00805f9b34fb":
                     print("found cocoa")
     return users
 
-
-def positioning(rpid, user):
-    x = np.arange(xsize).reshape(xsize, 1).repeat(ysize, axis=1)
-    y = np.arange(ysize).reshape(1, ysize).repeat(xsize, axis=0)
-    grid = np.zeros((xsize, ysize))
+def positioning(rpid, receivers):
+    x = np.arange(xsize).reshape(xsize,1).repeat(ysize,axis=1)
+    y = np.arange(ysize).reshape(1,ysize).repeat(xsize,axis=0)
+    grid = np.zeros((xsize,ysize))
     fig = plt.figure()
-    for uuid, s in user.items():
-        print("-signal:", uuid[-6:])
-    if len(user) < 3:
+    for uuid, s in receivers.items():
+        print("-signal:",uuid[-6:])
+    if len(receivers) < 3:
         # 測位するには受信機の数が少ない
         return None
-    for re in itertools.permutations(user.values(), 2):
+    for re in itertools.permutations(receivers.values(),2):
         hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
         # print(hi)
         if hi >= 1:
@@ -138,8 +139,10 @@ def positioning(rpid, user):
 users = dict()
 
 while True:
-    users = scan(users)
-    users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60}
-             for k, u in users.items() if len(u) != 0}
-    for rpid, user in users.items():
-        positioning(rpid, user)
+    #受信機からのusers情報取得
+    #users = scan(users)
+    users = mock_scan(users)
+    #60秒以上たったデータを削除
+    users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u) != 0}
+    for rpid, receivers in users.items():
+        positioning(rpid, receivers)
