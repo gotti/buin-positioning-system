@@ -8,6 +8,7 @@ import numpy as np
 import random
 from scipy.stats import norm
 
+
 # 既知の受信機のUUIDとその座標，単位はcmであり部室の左PC側の端を原点とし廊下側がx正，右PC側がy正とする座標系
 receiversPositions = {
     "fffe0215c7f76b8b9e333abc5d4ba3538e0aa808": np.array([0, 0]),
@@ -15,8 +16,8 @@ receiversPositions = {
     "fffe02150472b7bbce08788deb455a74c25cccce": np.array([390, 0])
 }
 zoom = 25
-xsize = int(1500/zoom)
-ysize = int(900/zoom)
+xRange = [-500, 1000]
+yRange = [-300, 600]
 
 
 class Receiver:
@@ -110,10 +111,13 @@ class Scanner():
                     users[scanning_user["rpid"]][uuid] = Receiver(uuid, rssi, time.time())
         return users
 
+
 def positioning(rpid, receivers):
-    x = np.arange(xsize).reshape(xsize,1).repeat(ysize,axis=1)
-    y = np.arange(ysize).reshape(1,ysize).repeat(xsize,axis=0)
-    grid = np.zeros((xsize,ysize))
+    x = np.arange(xRange[0], xRange[1], zoom).reshape(-1, 1)
+    y = np.arange(yRange[0], yRange[1], zoom).reshape(1, -1)
+    x = x.repeat(y.shape[1], axis=1)
+    y = y.repeat(x.shape[0], axis=0)
+    grid = np.zeros(x.shape)
     fig = plt.figure()
     for uuid, s in receivers.items():
         print("-signal:",uuid[-6:])
@@ -137,18 +141,19 @@ def positioning(rpid, receivers):
                                      headlength=10, connectionstyle='arc3',
                                      facecolor='gray', edgecolor='gray')
                      )
-        d = np.sqrt(((x*zoom-500)-circle[0])**2+((y*zoom-300)-circle[1])**2)
+        d = np.sqrt((x-circle[0])**2+(y-circle[1])**2)
         grid += norm.pdf(d, radius, 50)
-    maxPos = np.unravel_index(np.argmax(grid), grid.shape)
+    maxPos_px = np.unravel_index(np.argmax(grid), grid.shape)
+    #maxPos_pxは画像座標系で取得
     plt.imshow(grid)
     for i in receiversPositions.values():
         plt.plot(int((i[1]+300)/zoom), int((i[0]+500)/zoom),
                  marker='P', markersize=7, color='w')
-    plt.plot(maxPos[1], maxPos[0], marker='P', markersize=10, color='r')
+    plt.plot(maxPos_px[1], maxPos_px[0], marker='P', markersize=10, color='r')
     fig.savefig("img.png")
     plt.clf()
     plt.close()
-    maxPos = (maxPos[0] * zoom - 500, maxPos[1] * zoom - 300)
+    maxPos = (maxPos_px[0] * zoom - 500, maxPos_px[1] * zoom - 300)
     print("maxpos:", maxPos)
     return maxPos
 
