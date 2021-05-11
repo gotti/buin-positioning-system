@@ -1,4 +1,4 @@
-from bluepy import btle
+#from bluepy import btle
 import itertools
 import time
 import math
@@ -48,7 +48,7 @@ def calcEuclideanDistance(x, y):
 
 
 def calcRssi(d):
-    return int(-60*-20*math.log10(d))  # -60はそれっぽい値ならなんでも
+    return int(-60-20*math.log10(d))  # -60はそれっぽい値ならなんでも
 
 
 def mock_scan(users):
@@ -67,7 +67,7 @@ def mock_scan(users):
     return users
 
 
-scanner = btle.Scanner(0)
+#scanner = btle.Scanner(0)
 
 
 def scan(users):
@@ -140,8 +140,9 @@ users = dict()
 
 while True:
     #受信機からのusers情報取得
-    users = scan(users)
+    #users = scan(users)
+    users = mock_scan(users)
     #60秒以上たったデータを削除
     users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u) != 0}
     for rpid, receivers in users.items():
-        positioning(rpid, uuids)
+        positioning(rpid, receivers)
