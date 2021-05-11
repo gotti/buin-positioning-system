@@ -5,41 +5,71 @@ import math
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import random
 from scipy.stats import norm
 
 # 既知の受信機のUUIDとその座標，単位はcmであり部室の左PC側の端を原点とし廊下側がx正，右PC側がy正とする座標系
 receiversPositions = {
-        "fffe0215c7f76b8b9e333abc5d4ba3538e0aa808": np.array([0,0]),
-        "fffe0215413980cd77bc09a261469f6451072392": np.array([0,290]),
-        "fffe02150472b7bbce08788deb455a74c25cccce": np.array([390,0])
-        }
+    "fffe0215c7f76b8b9e333abc5d4ba3538e0aa808": np.array([0, 0]),
+    "fffe0215413980cd77bc09a261469f6451072392": np.array([0, 290]),
+    "fffe02150472b7bbce08788deb455a74c25cccce": np.array([390, 0])
+}
 zoom = 25
 xsize = int(1500/zoom)
 ysize = int(900/zoom)
+
 
 class Receiver:
     uuid:str = ""#受信機id
     rssi:int = 0#信号強度
     receivedTime = 0
-    def __init__(self, uuid:str, rssi, time):
+
+    def __init__(self, uuid: str, rssi, time):
         self.uuid = uuid
         self.rssi = rssi
         self.receivedTime = time
+
     def getUuid(self):
         return self.uuid
-    def setRssi(self, rssi:int):
+
+    def setRssi(self, rssi: int):
         self.rssi = rssi
+
     def getRssi(self):
         return self.rssi
+
     def getPos(self):
         return receiversPositions[self.uuid]
 
-def calcEuclideanDistance(x,y):
+
+def calcEuclideanDistance(x, y):
     return math.sqrt((x[0]-y[0])**2+(x[1]-y[1])**2)
-#grid = [[0] * 320 for i in range(420)]
+    #grid = [[0] * 320 for i in range(420)]
+
+
+def calcRssi(d):
+    return int(-60*-20*math.log10(d))  # -60はそれっぽい値ならなんでも
+
+
+def mock_scan(users):
+    time.sleep(3)
+    rpid = 1
+    point = np.array([180, 190])
+    for uuid, r in receiversPositions.items():
+        if random.random() <= 0.5:
+            rssi = calcRssi(calcEuclideanDistance(point, r))
+            print(calcEuclideanDistance(point, r))
+            print(rssi)
+            if not rpid in users.keys():
+                users[rpid] = {uuid: Receiver(uuid, rssi, time.time())}
+            else:
+                users[rpid][uuid] = Receiver(uuid, rssi, time.time())
+    return users
 
 
 scanner = btle.Scanner(0)
+
+
 def scan(users):
     detectedDevices = scanner.scan(3.0)
     for detectedDevice in detectedDevices:
@@ -77,32 +107,34 @@ def positioning(rpid, receivers):
         return None
     for re in itertools.permutations(receivers.values(),2):
         hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
-        #print(hi)
-        if  hi >= 1:
+        # print(hi)
+        if hi >= 1:
             continue
         h = hi/(1-hi)
         i = hi/(1+hi)
         enshu1 = h*(re[0].getPos() - re[1].getPos())+re[0].getPos()
         enshu2 = i*(re[1].getPos() - re[0].getPos())+re[0].getPos()
         circle = (enshu1+enshu2)/2
-        radius = calcEuclideanDistance((enshu1-enshu2)/2,np.array([0,0]))
-        #長さが円周である矢印を描画
-        plt.annotate('', xy=np.dot(enshu1,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]), xytext=np.dot(enshu2,np.array([[0,1/zoom],[1/zoom,0]]))+np.array([300/zoom,500/zoom]),
-                arrowprops=dict(shrink=0, width=1, headwidth=8, 
-                                headlength=10, connectionstyle='arc3',
-                                facecolor='gray', edgecolor='gray')
-               )
+        radius = calcEuclideanDistance((enshu1-enshu2)/2, np.array([0, 0]))
+        # 長さが円周である矢印を描画
+        plt.annotate('', xy=np.dot(enshu1, np.array([[0, 1/zoom], [1/zoom, 0]]))+np.array([300/zoom, 500/zoom]), xytext=np.dot(enshu2, np.array([[0, 1/zoom], [1/zoom, 0]]))+np.array([300/zoom, 500/zoom]),
+                     arrowprops=dict(shrink=0, width=1, headwidth=8,
+                                     headlength=10, connectionstyle='arc3',
+                                     facecolor='gray', edgecolor='gray')
+                     )
         d = np.sqrt(((x*zoom-500)-circle[0])**2+((y*zoom-300)-circle[1])**2)
-        grid += norm.pdf(d,radius,50)
+        grid += norm.pdf(d, radius, 50)
     maxPos = np.unravel_index(np.argmax(grid), grid.shape)
     plt.imshow(grid)
     for i in receiversPositions.values():
-        plt.plot(int((i[1]+300)/zoom), int((i[0]+500)/zoom), marker='P',markersize=7, color='w')
-    plt.plot(maxPos[1], maxPos[0], marker='P',markersize=10, color='r')
+        plt.plot(int((i[1]+300)/zoom), int((i[0]+500)/zoom),
+                 marker='P', markersize=7, color='w')
+    plt.plot(maxPos[1], maxPos[0], marker='P', markersize=10, color='r')
     print(maxPos)
     fig.savefig("img.png")
     plt.clf()
     plt.close()
+
 
 users = dict()
 
