@@ -130,8 +130,10 @@ def positioning(rpid, receivers):
     for re in itertools.permutations(receivers.values(),2):
         hi = 10**((-1/18)*(re[0].getRssi()-(re[1].getRssi())))
         # print(hi)
-        if hi >= 1:
+        if hi > 1:
             continue
+        if hi == 1:
+            hi = 1.001
         h = hi/(1-hi)
         i = hi/(1+hi)
         enshu1 = h*(re[0].getPos() - re[1].getPos())+re[0].getPos()
