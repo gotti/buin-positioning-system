@@ -7,7 +7,10 @@ import pandas as pd
 import numpy as np
 import random
 from scipy.stats import norm
+import asyncio
+import concurrent.futures
 
+from multiprocessing import freeze_support
 
 # 既知の受信機のUUIDとその座標，単位はcmであり部室の左PC側の端を原点とし廊下側がx正，右PC側がy正とする座標系
 receiversPositions = {
@@ -157,13 +160,34 @@ def positioning(rpid, receivers):
     print("maxpos:", maxPos)
     return maxPos
 
-
-users = {}
-scanner = Scanner()
-while True:
-    #受信機からのusers情報取得
-    users = scanner.scan(users)
-    #60秒以上たったデータを削除
-    users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u) != 0}
+def positioning_users(users):
+    positions = []
     for rpid, receivers in users.items():
-        positioning(rpid, receivers)
+        positions += [positioning(rpid, receivers)]
+    return positions
+
+async def main():
+    users = {}
+    scanner = Scanner()
+
+    #イベントループ取得
+    loop = asyncio.get_running_loop()
+    executor = concurrent.futures.ThreadPoolExecutor()
+    positioning_task = None 
+    while True:
+        #受信機からのusers情報取得
+        users = scanner.scan(users)
+        #60秒以上たったデータを削除
+        users = {k: {r: s for r, s in u.items() if time.time() - s.receivedTime <= 60} for k, u in users.items() if len(u) != 0}
+        
+        #それぞれの端末の座標取得
+        if positioning_task is not None:
+            positions = await positioning_task
+            print(positions)
+            positioning_task = None
+        positioning_task = loop.run_in_executor(executor, positioning_users, users)
+
+if __name__ == '__main__':
+    freeze_support()
+    # Windowsのみ必要っぽい？
+    asyncio.run(main())
